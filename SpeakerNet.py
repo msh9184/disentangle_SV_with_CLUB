@@ -43,16 +43,24 @@ class SpeakerNet(nn.Module):
         MIEstimator = importlib.import_module('mi_estimators.CLUBForCategorical').__getattribute__('MIEstimator')
         self.__MI_ctg_spk__ = MIEstimator(input_dim=num_out, label_num=num_class_spk)
 
-        MIEstimator = importlib.import_module('mi_estimators.CLUBSample').__getattribute__('MIEstimator')
+        MIEstimator = importlib.import_module('mi_estimators.CLUB').__getattribute__('MIEstimator')
         self.__MI_spk2dev__ = MIEstimator(x_dim=num_out, y_dim=num_out, hidden_size=1024)
 
         self.num_utt = num_utt
 
-    def forward(self, data, label_spk=None, label_dev=None, opt=None):
+
+    def forward(self, data, label_spk=None, label_dev=None, opt=None, is_infer=False):
+
         if label_spk == None:
             x = self.__S__.forward(data.reshape(-1,data.size()[-1]).cuda(), aug=False)
             x_spk, x_dev = self.__F__.forward(x)
-            return x_spk, x_dev
+
+            # inference
+            if is_infer:
+                return x_spk, x_dev
+            # evaluation
+            else:
+                return x_spk
 
         else:
             data = data.reshape(-1, data.size()[-1]).cuda()
@@ -107,6 +115,7 @@ class ModelTrainer(object):
         self.num_mi_update = kwargs.pop('num_mi_update')
 
         self.logfile = open(kwargs.pop('result_save_path')+"/logs_"+ str(gpu) +".txt", "a+")
+
 
     def train_network(self, loader, epoch, verbose):
         self.__model__.train()
@@ -315,7 +324,7 @@ class ModelTrainer(object):
         for idx, data in enumerate(infer_loader):
             audio = data[0][0].cuda()
             with torch.no_grad():
-                embed_spk, embed_dev = self.__model__(audio[0])#.detach().cpu().numpy()
+                embed_spk, embed_dev = self.__model__(data=audio[0], is_infer=True)#.detach().cpu().numpy()
 
             embed_spk = F.normalize(embed_spk, p=2, dim=1)
             embed_dev = F.normalize(embed_dev, p=2, dim=1)
@@ -338,6 +347,7 @@ class ModelTrainer(object):
 
     def saveParameters(self, path):
         torch.save(self.__model__.module.state_dict(), path)
+
 
     def loadParameters(self, path):
         self_state = self.__model__.module.state_dict()
